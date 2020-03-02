@@ -1,0 +1,36 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{979B321A-EDFA-45A7-ABEA-ADA6E0C2ABBC}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="DropboxTest.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="DropboxTest">
+        <MSBuild Projects="DropboxTest.dproj"/>
+    </Target>
+    <Target Name="DropboxTest:Clean">
+        <MSBuild Projects="DropboxTest.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="DropboxTest:Make">
+        <MSBuild Projects="DropboxTest.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="DropboxTest"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="DropboxTest:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="DropboxTest:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
