@@ -3,7 +3,7 @@ unit Rac.Dropbox.Types;
 interface
 
 uses
-  System.Generics.Collections;
+  System.Generics.Collections, System.SysUtils;
 
 type TDropboxItem = class(TObject)
   private
@@ -11,6 +11,7 @@ type TDropboxItem = class(TObject)
     FId: string;
     FPath: string;
     FPathLower: string;
+    FSharedLink: string;
   protected
   public
     function IsFile: Boolean; virtual; abstract;
@@ -19,6 +20,7 @@ type TDropboxItem = class(TObject)
     property ID: string read FId write FId;
     property Path: string read FPath write FPath;
     property PathLower: string read FPathLower write FPathLower;
+    property SharedLink: string read FSharedLink write FSharedLink;
 end;
 
 type TDropboxItems = class(TObjectList<TDropboxItem>)
@@ -28,6 +30,8 @@ type TDropboxItems = class(TObjectList<TDropboxItem>)
   public
     property Cursor: string read FCursor write FCursor;
     property HasMore: Boolean read FHasMore write FHasMore;
+    function GetByID(ID: string): TDropboxItem; // return nil if not found
+
 end;
 
 type TDropboxFolder = class(TDropboxItem)
@@ -81,6 +85,21 @@ end;
 function TDropboxFolder.IsFolder: Boolean;
 begin
   Result := True;
+end;
+
+{ TDropboxItems }
+
+function TDropboxItems.GetByID(ID: string): TDropboxItem;
+var
+  i: Integer;
+begin
+  Result := nil;
+  for i := 0 to Count - 1 do
+    if Items[i].ID.Equals(ID) then
+    begin
+      Result := Items[i];
+      Break;
+    end;
 end;
 
 end.

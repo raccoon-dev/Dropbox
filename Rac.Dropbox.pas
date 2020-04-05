@@ -2,10 +2,13 @@
 
 interface
 
+{.$DEFINE DUMP_RESULTS}
+
 uses
   System.Classes, System.SysUtils, REST.Types, REST.Client, System.JSON.Types,
   System.JSON.Readers, REST.Authenticator.OAuth, System.Net.HttpClient,
-  Rac.Dropbox.Types;
+  Rac.Dropbox.Types
+  {$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}, System.IOUtils{$ENDIF};
 
 const
   DROPBOX_RETURN_URL       = 'http://localhost';
@@ -34,6 +37,9 @@ type TDropboxBase = class(TObject)
     function IsReturnURLCorrect(AState, AUrl: string): Boolean;
     function JsonBool(Value: Boolean): string;
     procedure ClearRequest(BaseURL{, Mime}: string; Method: TRESTRequestMethod; Command: string);
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+    procedure DumpResults(const Description: string; Response: TRESTResponse);
+{$ENDIF}
   public
     /// <summary>
     ///  AppKey is necessary to authorize - to retrieve Token from dropbox.
@@ -67,7 +73,7 @@ type TDropboxBase = class(TObject)
     /// <summary>
     ///  Retrieve list of files and folders.
     /// </summary>
-    function ListFolder(ADropboxPath: string; AList: TDropboxItems; ARecursive: Boolean = True): Boolean;
+    function ListFolder(ADropboxPath: string; AList: TDropboxItems; ARecursive: Boolean = True; GetSharedLinks: Boolean = True): Boolean;
     /// <summary>
     ///  Upload ALocalPAth file to ADropboxPath folder. File size limit is 150[MB].
     /// </summary>
@@ -77,6 +83,19 @@ type TDropboxBase = class(TObject)
     ///  will be moved as well.
     /// </summary>
     function Move(ADropboxFromPath: string; ADropboxToPath: string): Boolean;
+    /// <summary>
+    ///  Retrieve list of shared links in format ID=URL
+    /// </summary>
+    function ListSharedLinks(SharedLinks: TStrings): Boolean;
+    /// <summary>
+    ///  Revoke shared link by URL of shared link
+    /// </summary>
+    function RevokeSharedLink(SharedLink: String): Boolean;
+    /// <summary>
+    ///  Create shared link from Dropbox file or folder.
+    ///  Return shared link or empty string if error.
+    /// </summary>
+    function CreateSharedLink(DropboxPath: String): String;
 
     // Properties
     property Token: string read GetToken;
@@ -95,13 +114,16 @@ const
   MIME_JSON  = 'application/json';
   MIME_BINARY = 'application/octet-stream';
 
-  CMD_CREATE_FOLDER = '/2/files/create_folder_v2';
-  CMD_DELETE        = '/2/files/delete_v2';
-  CMD_DOWNLOAD      = '/2/files/download';
-  CMD_DOWNLOAD_ZIP  = '/2/files/download_zip';
-  CMD_LIST_FOLDER   = '/2/files/list_folder';
-  CMD_MOVE          = '/2/files/move_v2';
-  CMD_UPLOAD        = '/2/files/upload';
+  CMD_CREATE_FOLDER      = '/2/files/create_folder_v2';
+  CMD_DELETE             = '/2/files/delete_v2';
+  CMD_DOWNLOAD           = '/2/files/download';
+  CMD_DOWNLOAD_ZIP       = '/2/files/download_zip';
+  CMD_LIST_FOLDER        = '/2/files/list_folder';
+  CMD_MOVE               = '/2/files/move_v2';
+  CMD_UPLOAD             = '/2/files/upload';
+  CMD_GET_SHARED_LINKS   = '/2/sharing/list_shared_links';
+  CMD_REVOKE_SHARED_LINK = '/2/sharing/revoke_shared_link';
+  CMD_CREATE_SHARED_LINK = '/2/sharing/create_shared_link_with_settings';
 
 { TDropboxBase }
 
@@ -146,6 +168,40 @@ begin
   FOAuth2.Free;
   inherited;
 end;
+
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+procedure TDropboxBase.DumpResults(const Description: string; Response: TRESTResponse);
+const
+  DUMP_FILE_NAME = 'results.dump.txt';
+  DELIMITER = '----------------------------------------';
+var
+  sw: TStreamWriter;
+begin
+  if TFile.Exists(DUMP_FILE_NAME) then
+    sw := TFile.AppendText(DUMP_FILE_NAME)
+  else
+    sw := TFile.CreateText(DUMP_FILE_NAME);
+  try
+    sw.Write(DELIMITER); sw.WriteLine;
+    sw.Write(Description); sw.WriteLine;
+    sw.Write(DateTimeToStr(Now)); sw.WriteLine;
+    sw.Write('Status Code: '); sw.Write(Response.StatusCode); sw.WriteLine;
+    sw.Write('Status Text: '); sw.Write(Response.StatusText); sw.WriteLine;
+    sw.Write('Content Type: '); sw.Write(Response.ContentType); sw.WriteLine;
+    sw.Write('Content Length: '); sw.Write(Response.ContentLength); sw.WriteLine;
+    sw.Write('Content Encoding: '); sw.Write(Response.ContentEncoding); sw.WriteLine;
+    sw.WriteLine;
+    if Response.ContentLength > 0 then
+      if Response.ContentType.ToLower.Equals('application/json') then
+        sw.Write(Response.JSONValue.Format)
+      else
+        sw.Write(Response.Content);
+    sw.WriteLine;
+  finally
+    sw.Free;
+  end;
+end;
+{$ENDIF}
 
 function TDropboxBase.GetState(const ALength: Cardinal): string;
 const
@@ -286,6 +342,9 @@ begin
                CMD_CREATE_FOLDER);
   FRequest.Body.Add(Format('{"path": "/%s", "autorename": false}', [ANewPath]), TRESTContentType.ctAPPLICATION_JSON);
   FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+  DumpResults('CreateFolder', FResponse);
+{$ENDIF}
 
   if FResponse.StatusCode = 200 then
   begin
@@ -300,6 +359,28 @@ begin
   end;
 end;
 
+function TDropboxBase.CreateSharedLink(DropboxPath: String): String;
+begin
+  Result := string.Empty;
+  ClearRequest(DROPBOX_API_BASE_URL,
+               TRESTRequestMethod.rmPOST,
+               CMD_CREATE_SHARED_LINK);
+  FRequest.Body.Add(Format('{"path": "%s"}', [DropboxPath]), TRESTContentType.ctAPPLICATION_JSON);
+  FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+  DumpResults('CreateSharedLink', FResponse);
+{$ENDIF}
+
+  if FResponse.StatusCode = 200 then
+    while FResponse.JSONReader.Read do
+      if FResponse.JSONReader.TokenType = TJsonToken.PropertyName then
+        if FResponse.JSONReader.Value.AsString.ToLower.Equals('url') then
+        begin
+        Result := FResponse.JSONReader.ReadAsString;
+        Break;
+        end;
+end;
+
 function TDropboxBase.Delete(APath: string): Boolean;
 begin
   Result := False;
@@ -308,6 +389,9 @@ begin
                CMD_DELETE);
   FRequest.Body.Add(Format('{"path": "%s"}', [APath]), TRESTContentType.ctAPPLICATION_JSON);
   FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+  DumpResults('Delete', FResponse);
+{$ENDIF}
 
   if FResponse.StatusCode = 200 then
   begin
@@ -336,6 +420,9 @@ begin
   FRequest.AddBody(string.Empty, TRESTContentType.ctAPPLICATION_OCTET_STREAM);
 
   FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+  DumpResults('DownloadZip', FResponse);
+{$ENDIF}
 
   Result := FResponse.StatusCode = 200;
 
@@ -367,6 +454,9 @@ begin
   FRequest.AddBody(string.Empty, TRESTContentType.ctAPPLICATION_OCTET_STREAM);
 
   FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+  DumpResults('Download', FResponse);
+{$ENDIF}
 
   Result := FResponse.StatusCode = 200;
   if Result then
@@ -384,10 +474,13 @@ begin
 end;
 
 function TDropboxBase.ListFolder(ADropboxPath: string; AList: TDropboxItems;
-  ARecursive: Boolean): Boolean;
+  ARecursive: Boolean; GetSharedLinks: Boolean): Boolean;
 var
   sb: TStringBuilder;
   Prop: string;
+  sl: TStringList;
+  Itm: TDropboxItem;
+  i: Integer;
 begin
   if not Assigned(AList) then
     raise EArgumentNilException.Create('Empty destination list parameter');
@@ -409,8 +502,12 @@ begin
       .Append('}');
     FRequest.Body.Add(sb.ToString, TRESTContentType.ctAPPLICATION_JSON);
     FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+    DumpResults('ListFolder', FResponse);
+{$ENDIF}
 
     if FResponse.StatusCode = 200 then
+    begin
       while FResponse.JSONReader.Read do
         if FResponse.JSONReader.TokenType = TJsonToken.PropertyName then
         begin
@@ -432,8 +529,72 @@ begin
         end else
         if FResponse.JSONReader.TokenType = TJsonToken.EndObject then
           Break;
+
+      if GetSharedLinks then
+      begin
+        sl := TStringList.Create;
+        try
+          if ListSharedLinks(sl) then
+            for i := 0 to sl.Count - 1 do
+            begin
+              Itm := AList.GetByID(sl.KeyNames[i]);
+              if Assigned(Itm) then
+                Itm.SharedLink := sl.ValueFromIndex[i];
+            end;
+        finally
+          sl.Free;
+        end;
+      end;
+
+    end;
   finally
     sb.Free;
+  end;
+end;
+
+function TDropboxBase.ListSharedLinks(SharedLinks: TStrings): Boolean;
+var
+  AID, AURL: string;
+begin
+  Result := False;
+  ClearRequest(DROPBOX_API_BASE_URL,
+               TRESTRequestMethod.rmPOST,
+               CMD_GET_SHARED_LINKS);
+  FRequest.Body.Add('{}', TRESTContentType.ctAPPLICATION_JSON);
+  FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+  DumpResults('ListSharedLinks', FResponse);
+{$ENDIF}
+
+  if FResponse.StatusCode = 200 then
+  begin
+    AID := string.Empty;
+    AURL := string.Empty;
+    while FResponse.JSONReader.Read do
+      if FResponse.JSONReader.TokenType = TJsonToken.PropertyName then
+      begin
+        if FResponse.JSONReader.Value.AsString.Equals('url') then
+        begin
+          AURL := FResponse.JSONReader.ReadAsString;
+          if not string.IsNullOrEmpty(AID) then
+          begin
+            SharedLinks.AddPair(AID, AURL);
+            AID := string.Empty;
+            AURL := string.Empty;
+          end;
+        end else
+        if FResponse.JSONReader.Value.AsString.Equals('id') then
+        begin
+          AID := FResponse.JSONReader.ReadAsString;
+          if not string.IsNullOrEmpty(AURL) then
+          begin
+            SharedLinks.AddPair(AID, AURL);
+            AID := string.Empty;
+            AURL := string.Empty;
+          end;
+        end;
+    end;
+    Result := True; // delete me
   end;
 end;
 
@@ -456,6 +617,9 @@ begin
       .Append('}');
     FRequest.Body.Add(sb.ToString, TRESTContentType.ctAPPLICATION_JSON);
     FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+    DumpResults('Move', FResponse);
+{$ENDIF}
 
     if FResponse.StatusCode = 200 then
     begin
@@ -470,6 +634,25 @@ begin
     end;
   finally
     sb.Free;
+  end;
+end;
+
+
+function TDropboxBase.RevokeSharedLink(SharedLink: String): Boolean;
+begin
+  Result := False;
+  if not string.IsNullOrEmpty(SharedLink) then
+  begin
+    ClearRequest(DROPBOX_API_BASE_URL,
+                 TRESTRequestMethod.rmPOST,
+                 CMD_REVOKE_SHARED_LINK);
+    FRequest.Body.Add(Format('{"url": "%s"}', [SharedLink]), TRESTContentType.ctAPPLICATION_JSON);
+    FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+    DumpResults('RevokeSharedLink', FResponse);
+{$ENDIF}
+
+    Result := (FResponse.StatusCode = 200);
   end;
 end;
 
@@ -491,6 +674,9 @@ begin
     fileLocal.Seek(0, soFromBeginning);
     FRequest.AddBody(fileLocal, TRESTContentType.ctAPPLICATION_OCTET_STREAM);
     FRequest.Execute;
+{$IF Defined(DEBUG) AND Defined(DUMP_RESULTS)}
+    DumpResults('Upload', FResponse);
+{$ENDIF}
   finally
     fileLocal.Free;
   end;

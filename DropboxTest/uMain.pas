@@ -3,12 +3,11 @@ unit uMain;
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Rac.Dropbox.VCL, Rac.Dropbox.Types, Vcl.StdCtrls,
-  Vcl.OleCtrls, SHDocVw, Vcl.ExtCtrls, System.IOUtils, REST.Types, REST.Client,
-  Data.Bind.Components, Data.Bind.ObjectScope, REST.Authenticator.OAuth,
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Rac.Dropbox.VCL, Rac.Dropbox.Types,
+  Vcl.StdCtrls, Vcl.OleCtrls, SHDocVw, Vcl.ExtCtrls, System.IOUtils, ShellApi, ClipBrd,
   Vcl.ComCtrls, System.ImageList, Vcl.ImgList, Vcl.Buttons, System.UITypes,
-  System.Actions, Vcl.ActnList, ShellApi;
+  System.Actions, Vcl.ActnList;
 
 const
   APP_KEY = 'CHANGE_ME';
@@ -19,10 +18,6 @@ type
     wbWww: TWebBrowser;
     btnAuthorize: TButton;
     pnlMain: TPanel;
-    restClient: TRESTClient;
-    restRequest: TRESTRequest;
-    restResponse: TRESTResponse;
-    restOauth2: TOAuth2Authenticator;
     btnCreateFolder: TButton;
     lvList: TListView;
     ilList: TImageList;
@@ -43,6 +38,12 @@ type
     actDownload: TAction;
     actUpload: TAction;
     actRename: TAction;
+    actGetSharedLink: TAction;
+    actDeleteSharedLink: TAction;
+    actCreateSharedLink: TAction;
+    btnGetSharedLink: TButton;
+    btnDeleteSharedLink: TButton;
+    btnCreateSharedLink: TButton;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure lvListDblClick(Sender: TObject);
@@ -54,6 +55,11 @@ type
     procedure actRenameExecute(Sender: TObject);
     procedure actDeleteExecute(Sender: TObject);
     procedure actDownloadExecute(Sender: TObject);
+    procedure actGetSharedLinkExecute(Sender: TObject);
+    procedure actDeleteSharedLinkExecute(Sender: TObject);
+    procedure actCreateSharedLinkExecute(Sender: TObject);
+    procedure lvListSelectItem(Sender: TObject; Item: TListItem;
+      Selected: Boolean);
   private
     { Private declarations }
     FCurrentPath: string;
@@ -70,6 +76,7 @@ type
   public
     { Public declarations }
     Dropbox: TDropbox;
+    DropboxItems: TDropboxItems;
     procedure WaitCursorOn;
     procedure WaitCursorOff;
   end;
@@ -84,6 +91,7 @@ const
   TOKEN_FILE_NAME = 'token.txt';
   ICON_FOLDER = 0;
   ICON_FILE = 1;
+  ICON_SHARED = 2;
 
 {$R *.dfm}
 
@@ -108,6 +116,23 @@ begin
   end;
 end;
 
+procedure TfrmMain.actCreateSharedLinkExecute(Sender: TObject);
+var
+  Str: string;
+begin
+  if Assigned(lvList.Selected) then
+    if TDropboxItem(lvList.Selected.Data).SharedLink = '' then
+    begin
+      Str := Dropbox.CreateSharedLink(PreparePath(FCurrentPath + TDropboxItem(lvList.Selected.Data).Name));
+      if Str <> '' then
+      begin
+        Clipboard.AsText := Str;
+        ListFolder(FCurrentPath);
+      end;
+    end else
+      Clipboard.AsText := TDropboxItem(lvList.Selected.Data).SharedLink;
+end;
+
 procedure TfrmMain.actDeleteExecute(Sender: TObject);
 var
   AName, AType: string;
@@ -129,6 +154,15 @@ begin
       WaitCursorOff;
       ListFolder(FCurrentPath);
     end;
+  end;
+end;
+
+procedure TfrmMain.actDeleteSharedLinkExecute(Sender: TObject);
+begin
+  if Assigned(lvList.Selected) then
+  begin
+    Dropbox.RevokeSharedLink(TDropboxItem(lvList.Selected.Data).SharedLink);
+    ListFolder(FCurrentPath);
   end;
 end;
 
@@ -161,6 +195,12 @@ begin
     end;
     WaitCursorOff;
   end;
+end;
+
+procedure TfrmMain.actGetSharedLinkExecute(Sender: TObject);
+begin
+  if Assigned(lvList.Selected) then
+    Clipboard.AsText := TDropboxItem(lvList.Selected.Data).SharedLink;
 end;
 
 procedure TfrmMain.actGotoUpExecute(Sender: TObject);
@@ -213,6 +253,8 @@ end;
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
+  DropboxItems := TDropboxItems.Create(True);
+
   FCurrentPath := '/';
   Dropbox := TDropbox.Create(APP_KEY, ReadToken);
   Dropbox.OnAuthorize := _OnAuthorize;
@@ -225,6 +267,7 @@ end;
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
   Dropbox.Free;
+  DropboxItems.Free;
 end;
 
 function TfrmMain.GetDataDir: string;
@@ -267,30 +310,35 @@ end;
 
 procedure TfrmMain.ListFolder(APath: string);
 var
-  List: TDropboxItems;
   i: Integer;
   Item: TListItem;
 begin
-  List := TDropboxItems.Create;
+  actGetSharedLink.Visible    := False;
+  actCreateSharedLink.Visible := False;
+  actDeleteSharedLink.Visible := False;
+  //
   lvList.Items.BeginUpdate;
   try
     lvList.Clear;
+    DropboxItems.Clear;
     WaitCursorOn;
-    if Dropbox.ListFolder(PreparePath(FCurrentPath), List, False) then
+    if Dropbox.ListFolder(PreparePath(FCurrentPath), DropboxItems, False, True) then
     begin
-      for i := 0 to List.Count - 1 do
+      for i := 0 to DropboxItems.Count - 1 do
       begin
         Item := lvList.Items.Add;
-        Item.Caption := List[i].Name;
-        if List[i].IsFolder then
+        Item.Data := Pointer(DropboxItems[i]);
+        Item.Caption := DropboxItems[i].Name;
+        if DropboxItems[i].IsFolder then
           Item.ImageIndex := ICON_FOLDER
         else
           Item.ImageIndex := ICON_FILE;
+        if not string.IsNullOrEmpty(DropboxItems[i].SharedLink) then
+          Item.ImageIndex := Item.ImageIndex + ICON_SHARED;
       end;
     end;
   finally
     lvList.Items.EndUpdate;
-    List.Free;
     WaitCursorOff;
   end;
 end;
@@ -302,6 +350,25 @@ begin
       GotoPath(lvList.Selected.Caption)
     else
       actDownload.Execute;
+end;
+
+procedure TfrmMain.lvListSelectItem(Sender: TObject; Item: TListItem;
+  Selected: Boolean);
+var
+  IsShared: Boolean;
+begin
+  if Selected then
+  begin
+    IsShared := Item.ImageIndex >= ICON_SHARED;
+    actCreateSharedLink.Visible := not IsShared;
+    actDeleteSharedLink.Visible := IsShared;
+    actGetSharedLink.Visible    := IsShared;
+  end else
+  begin
+    actGetSharedLink.Visible    := False;
+    actDeleteSharedLink.Visible := False;
+    actCreateSharedLink.Visible := False;
+  end;
 end;
 
 procedure TfrmMain.OpenLocalFile(AFilePath: string);

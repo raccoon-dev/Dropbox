@@ -12,6 +12,9 @@ Supported operations:
  * List folder **/2/files/list_folder**
  * Move **/2/files/move_v2**
  * Upload **/2/files/upload**
+ * List Shared Links   = '/2/sharing/list_shared_links';
+ * Delete Shared Link = '/2/sharing/revoke_shared_link';
+ * Create Shared Link = '/2/sharing/create_shared_link_with_settings';
 
 Before compile test application, change **APP_KEY** constant to your App key from your Dropbox account.
 
