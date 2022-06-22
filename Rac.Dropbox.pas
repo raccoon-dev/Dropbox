@@ -13,7 +13,7 @@ uses
 const
   DROPBOX_RETURN_URL       = 'http://localhost';
   DROPBOX_AUTHORIZE_URL    = 'https://www.dropbox.com';
-  DROPBOX_API_BASE_URL     = 'https://api.dropbox.com';
+  DROPBOX_API_BASE_URL     = 'https://api.dropboxapi.com';
   DROPBOX_CONTENT_BASE_URL = 'https://content.dropboxapi.com';
   MAX_STATE_LENGTH         = 500;
 
@@ -144,7 +144,7 @@ begin
   FClient.AcceptEncoding  := 'UTF-8';
   FClient.Authenticator   := FOAuth2;
   FClient.ContentType     := MIME_JSON;
-  FClient.SecureProtocols := [THTTPSecureProtocol.TLS12, THTTPSecureProtocol.TLS11];
+  FClient.SecureProtocols := [THTTPSecureProtocol.TLS13, THTTPSecureProtocol.TLS12, THTTPSecureProtocol.TLS11];
   FClient.UserAgent       := USER_AGENT;
 
 {$IF Defined(DEBUG)}

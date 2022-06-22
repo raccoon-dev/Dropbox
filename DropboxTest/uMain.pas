@@ -5,17 +5,16 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Rac.Dropbox.VCL, Rac.Dropbox.Types,
-  Vcl.StdCtrls, Vcl.OleCtrls, SHDocVw, Vcl.ExtCtrls, System.IOUtils, ShellApi, ClipBrd,
-  Vcl.ComCtrls, System.ImageList, Vcl.ImgList, Vcl.Buttons, System.UITypes,
-  System.Actions, Vcl.ActnList;
+  Vcl.StdCtrls, Vcl.ExtCtrls, System.IOUtils, ShellApi, ClipBrd, Vcl.ComCtrls,
+  System.ImageList, Vcl.ImgList, Vcl.Buttons, System.UITypes, System.Actions,
+  Vcl.ActnList, Vcl.Edge;
 
 const
-  APP_KEY = 'CHANGE_ME';
+  APP_KEY = 'CHANGE ME!!!';
 
 type
   TfrmMain = class(TForm)
     pnlLeft: TPanel;
-    wbWww: TWebBrowser;
     btnAuthorize: TButton;
     pnlMain: TPanel;
     btnCreateFolder: TButton;
@@ -63,6 +62,7 @@ type
   private
     { Private declarations }
     FCurrentPath: string;
+    FWww: TEdgeBrowser;
     procedure _OnAuthorize(Sender: TObject; const IsAuthorized: Boolean);
     procedure SetButtons(Isauthorized: Boolean);
     function  ReadToken: string;
@@ -87,20 +87,25 @@ var
 implementation
 
 const
-  DATA_DIR = 'Raccoon';
-  TOKEN_FILE_NAME = 'token.txt';
-  ICON_FOLDER = 0;
-  ICON_FILE = 1;
-  ICON_SHARED = 2;
+  DATA_DIR           = 'Raccoon';
+  TOKEN_FILE_NAME    = 'token.txt';
+  ICON_FOLDER        = 0;
+  ICON_FILE          = 1;
+  ICON_FOLDER_SHARED = 2;
+  ICON_FILE_SHARED   = 3;
 
 {$R *.dfm}
 
 procedure TfrmMain.actAuthorizeExecute(Sender: TObject);
 begin
-  wbWww.Visible := True;
-  pnlMain.Visible := False;
-
-  Dropbox.Authorize(wbWww);
+  if not Assigned(FWww) then
+  begin
+    pnlMain.Visible := False;
+    FWww := TEdgeBrowser.Create(Self);
+    FWww.Align := TAlign.alClient;
+    FWww.Parent := Self;
+  end;
+  Dropbox.Authorize(FWww);
 end;
 
 procedure TfrmMain.actCreateFolderExecute(Sender: TObject);
@@ -334,7 +339,7 @@ begin
         else
           Item.ImageIndex := ICON_FILE;
         if not string.IsNullOrEmpty(DropboxItems[i].SharedLink) then
-          Item.ImageIndex := Item.ImageIndex + ICON_SHARED;
+          Item.ImageIndex := Item.ImageIndex + 2;
       end;
     end;
   finally
@@ -346,7 +351,7 @@ end;
 procedure TfrmMain.lvListDblClick(Sender: TObject);
 begin
   if Assigned(lvList.Selected) then
-    if lvList.Selected.ImageIndex = ICON_FOLDER then
+    if lvList.Selected.ImageIndex in [ICON_FOLDER, ICON_FOLDER_SHARED] then
       GotoPath(lvList.Selected.Caption)
     else
       actDownload.Execute;
@@ -359,7 +364,7 @@ var
 begin
   if Selected then
   begin
-    IsShared := Item.ImageIndex >= ICON_SHARED;
+    IsShared := Item.ImageIndex >= ICON_FOLDER_SHARED;
     actCreateSharedLink.Visible := not IsShared;
     actDeleteSharedLink.Visible := IsShared;
     actGetSharedLink.Visible    := IsShared;
@@ -442,7 +447,11 @@ end;
 
 procedure TfrmMain._OnAuthorize(Sender: TObject; const IsAuthorized: Boolean);
 begin
-  wbWww.Visible := False;
+  if Assigned(FWww) then
+  begin
+    FWww.DisposeOf;
+    FWww := nil;
+  end;
   pnlMain.Visible := True;
   SetButtons(IsAuthorized);
   if IsAuthorized then

@@ -127,7 +127,6 @@ object frmMain: TfrmMain
       Align = alTop
       Style = bsCommandLink
       TabOrder = 6
-      ExplicitLeft = 6
     end
     object btnDeleteSharedLink: TButton
       AlignWithMargins = True
@@ -143,7 +142,6 @@ object frmMain: TfrmMain
       Align = alTop
       Style = bsCommandLink
       TabOrder = 7
-      ExplicitLeft = 6
     end
     object btnCreateSharedLink: TButton
       AlignWithMargins = True
@@ -161,28 +159,13 @@ object frmMain: TfrmMain
       TabOrder = 8
     end
   end
-  object wbWww: TWebBrowser
-    Left = 185
-    Top = 0
-    Width = 667
-    Height = 480
-    Align = alClient
-    TabOrder = 1
-    ExplicitHeight = 411
-    ControlData = {
-      4C000000F04400009C3100000000000000000000000000000000000000000000
-      000000004C000000000000000000000001000000E0D057007335CF11AE690800
-      2B2E126208000000000000004C0000000114020000000000C000000000000046
-      8000000000000000000000000000000000000000000000000000000000000000
-      00000000000000000100000000000000000000000000000000000000}
-  end
   object pnlMain: TPanel
     Left = 185
     Top = 0
     Width = 667
     Height = 480
     Align = alClient
-    TabOrder = 2
+    TabOrder = 1
     object lvList: TListView
       Left = 1
       Top = 1
@@ -197,7 +180,6 @@ object frmMain: TfrmMain
       TabOrder = 0
       OnDblClick = lvListDblClick
       OnSelectItem = lvListSelectItem
-      ExplicitLeft = 3
     end
     object pnlRight: TPanel
       Left = 616
